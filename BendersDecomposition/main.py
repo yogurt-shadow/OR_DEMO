@@ -70,37 +70,37 @@ class Master:
     def write(self):
         self.m.write("master_model.lp")
 
+if __name__ == "__main__":
+    N, M = 10, 1
+    c, d = np.array([1+0.01*i for i in range(1, N+1)]), 1.045
+    A, B = np.vstack((np.ones((1, N)), np.eye(N))), np.array([1 if i == 0 else 0 for i in range(N+1)]).reshape(N+1,1)
+    b = np.array([1000 if i == 0 else 100 for i in range(N+1)]).reshape(N+1,1)
 
-N, M = 10, 1
-c, d = np.array([1+0.01*i for i in range(1, N+1)]), 1.045
-A, B = np.vstack((np.ones((1, N)), np.eye(N))), np.array([1 if i == 0 else 0 for i in range(N+1)]).reshape(N+1,1)
-b = np.array([1000 if i == 0 else 100 for i in range(N+1)]).reshape(N+1,1)
+    ub, lb = np.inf, -np.inf
+    MAX_ITER_TIMES, eps = 10, 0.1
 
-ub, lb = np.inf, -np.inf
-MAX_ITER_TIMES, eps = 10, 0.1
+    subproblem = Subproblem(N, M)
+    subproblem.add_constrs(A, c)
+    masterproblem = Master(N, M, d)
+    masterproblem.set_objective()
+    y = 1500
 
-subproblem = Subproblem(N, M)
-subproblem.add_constrs(A, c)
-masterproblem = Master(N, M, d)
-masterproblem.set_objective()
-y = 1500
-
-for i in range(MAX_ITER_TIMES):
-    if ub - lb <= eps:
-        break
-    subproblem.set_objective(B, b, y)
-    subproblem.solve()
-    subproblem.write()
-    rays, solution_status = subproblem.get_status()
+    for i in range(MAX_ITER_TIMES):
+        if ub - lb <= eps:
+            break
+        subproblem.set_objective(B, b, y)
+        subproblem.solve()
+        subproblem.write()
+        rays, solution_status = subproblem.get_status()
+        
+        if solution_status == GRB.Status.UNBOUNDED or solution_status == GRB.Status.INF_OR_UNBD:
+            masterproblem.add_cut1(B, b, u = rays)
+        if solution_status == GRB.Status.OPTIMAL:
+            masterproblem.add_cut2(B, b, u = rays)
+            lb = max(lb, subproblem.get_objval() + d*y)
     
-    if solution_status == GRB.Status.UNBOUNDED or solution_status == GRB.Status.INF_OR_UNBD:
-        masterproblem.add_cut1(B, b, u = rays)
-    if solution_status == GRB.Status.OPTIMAL:
-        masterproblem.add_cut2(B, b, u = rays)
-        lb = max(lb, subproblem.get_objval() + d*y)
- 
-    masterproblem.solve()
-    masterproblem.write()
-    y = masterproblem.get_solution()
-    ub = masterproblem.get_objval()
-    print("lb: {},  ub: {}, y: {}".format(lb, ub, y))
+        masterproblem.solve()
+        masterproblem.write()
+        y = masterproblem.get_solution()
+        ub = masterproblem.get_objval()
+        print("lb: {},  ub: {}, y: {}".format(lb, ub, y))

@@ -109,9 +109,3 @@ while candidate_node:
 
 print("lower_bound: ", lower_bound)
 print("optimum:", current_optimum)
-
-    
-
-
-    
-

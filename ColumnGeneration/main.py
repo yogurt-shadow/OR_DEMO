@@ -2,6 +2,7 @@ import numpy as np
 import gurobipy as gp
 from gurobipy import GRB
 
+# RMP: Restricted Master Problem
 class Master:
     def __init__(self, lengths, demands, W) -> None:
         self.M, self.lengths, self.demands, self.W = len(lengths), lengths, demands, W
@@ -70,49 +71,58 @@ class SubProblem:
     def write(self):
         self.model.write("sub_model.lp")
 
-
 W = 20 # width of large roll
 lengths = [3, 7, 9, 16]
 demands = [25, 30, 14, 8]
 M = len(lengths) # number of items
 N = sum(demands) # number of available rolls
 
-model = gp.Model("cutting stock")
-y = model.addVars(N, vtype = GRB.BINARY, name = 'y')
-x = model.addVars(N, M, vtype = GRB.INTEGER, name = 'x')
-model.addConstrs((gp.quicksum(x[i,j] for i in range(N)) >= demands[j]) for j in range(M))
-model.addConstrs((gp.quicksum(lengths[j]*x[i,j] for j in range(M)) <= W*y[i] for i in range(N)))
-model.setObjective(gp.quicksum(y[i] for i in range(N)))
+"""
+y: whether cutting i-th roll
+x: the i-th roll cuts into x(i,j) j-th demand roll
 
-model.optimize()
+s.t.
+1. generated rolls should meet requirements
+   \sum_{i} x(i, j) >= demand(j) for j \in demand rolls
+2. a roll can not be cut into demand rolls whose sum exceeds its length
+    \sum_{j} length(j)*x(i, j) <= y(i) * W   for i \in available rolls
 
-# x_j: number of times patter j is used
-# a_ij: number of times item i is cut in patter j
+Obj:
+    minimize cost, \sum y(i)
+"""
+def TraditionalSolve():
+    model = gp.Model("cutting stock")
+    y = model.addVars(N, vtype = GRB.BINARY, name = 'y')
+    x = model.addVars(N, M, vtype = GRB.INTEGER, name = 'x')
+    model.addConstrs((gp.quicksum(x[i,j] for i in range(N)) >= demands[j]) for j in range(M))
+    model.addConstrs((gp.quicksum(lengths[j]*x[i,j] for j in range(M)) <= W*y[i] for i in range(N)))
+    model.setObjective(gp.quicksum(y[i] for i in range(N)))
+    model.optimize()
+    print("Running Time: ", model.Runtime)
 
-MAX_ITER_TIMES = 10
+def ColumnGeneration():
+    MAX_ITER_TIMES = 10
+    cutting_stock = Master(lengths, demands, W)
+    cutting_stock.create_model()
+    sub_prob = SubProblem(lengths, W)
+    sub_prob.create_model()
+    for k in range(MAX_ITER_TIMES): 
+        cutting_stock.solve()
+        pi = cutting_stock.get_dual_vars()
+        cutting_stock.write()
+        
+        sub_prob.set_objective(pi)
+        sub_prob.solve()
+        y = sub_prob.get_solution()
+        reduced_cost = sub_prob.get_reduced_cost()
+        sub_prob.write()
+        cutting_stock.update_contrs(column_coeff=y)
+        if reduced_cost <= 1:
+            break
+    cutting_stock.to_int()
+    cutting_stock.solve(flag=1)
 
-cutting_stock = Master(lengths, demands, W)
-cutting_stock.create_model()
-sub_prob = SubProblem(lengths, W)
-sub_prob.create_model()
 
-for k in range(MAX_ITER_TIMES): 
-    cutting_stock.solve()
-    pi = cutting_stock.get_dual_vars()
-    cutting_stock.write()
-    
-    sub_prob.set_objective(pi)
-    sub_prob.solve()
-    y = sub_prob.get_solution()
-    reduced_cost = sub_prob.get_reduced_cost()
-    sub_prob.write()
-    cutting_stock.update_contrs(column_coeff=y)
-    if reduced_cost <= 1:
-        break
-
-cutting_stock.to_int()
-cutting_stock.solve(flag=1)
-
-    
-
+TraditionalSolve()
+ColumnGeneration()
     
